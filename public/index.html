@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>scrobblage</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1><img src="/favicon.svg" alt="" width="32" height="32" style="vertical-align: middle; margin-right: 0.3em;">scrobblage</h1>
+                <p class="subtitle">Generate a collage of your top albums from Last.fm</p>
+            </div>
+            <a href="https://github.com/headdirt/scrobblage" class="github-link" title="View on GitHub"><svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        </div>
+
+        <form id="collage-form">
+            <div class="form-row">
+                <label for="user">Last.fm Username</label>
+                <input type="text" id="user" name="user" required placeholder="username" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <div class="form-row">
+                    <label for="period">Time Period</label>
+                    <select id="period" name="period">
+                        <option value="7day">Last 7 Days</option>
+                        <option value="1month">Last Month</option>
+                        <option value="3month">Last 3 Months</option>
+                        <option value="6month">Last 6 Months</option>
+                        <option value="12month">Last 12 Months</option>
+                        <option value="overall">Overall</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label for="size">Grid Size</label>
+                    <select id="size" name="size">
+                        <option value="3">3x3</option>
+                        <option value="4">4x4</option>
+                        <option value="5">5x5</option>
+                        <option value="7">7x7</option>
+                        <option value="10">10x10</option>
+                    </select>
+                </div>
+            </div>
+            <details class="options-section">
+                <summary>Options</summary>
+                <div class="options-grid">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="hide-captions"> Hide captions
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-playcount"> Show play counts
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skip-nocover"> Skip albums without covers
+                    </label>
+                </div>
+            </details>
+            <button type="submit" id="submit-btn">Generate Collage</button>
+        </form>
+
+        <div id="loading" style="display:none;">
+            <div class="spinner"></div>
+            <span>Generating collage...</span>
+        </div>
+
+        <div id="error" style="display:none;"></div>
+
+        <div id="result" style="display:none;">
+            <canvas id="collage-canvas" style="display:none;"></canvas>
+            <img id="collage-img">
+            <a id="download-link" class="download-btn">Download Image</a>
+        </div>
+    </div>
+
+    <script>
+        const TILE_SIZE = 300;
+        const form = document.getElementById("collage-form");
+        const canvas = document.getElementById("collage-canvas");
+        const ctx = canvas.getContext("2d");
+        const collageImg = document.getElementById("collage-img");
+        const loading = document.getElementById("loading");
+        const result = document.getElementById("result");
+        const error = document.getElementById("error");
+        const downloadLink = document.getElementById("download-link");
+        const submitBtn = document.getElementById("submit-btn");
+
+        function loadImage(url, retries = 2) {
+            return new Promise((resolve) => {
+                if (!url) { resolve(null); return; }
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => resolve(img);
+                img.onerror = () => {
+                    if (retries > 0) {
+                        setTimeout(() => loadImage(url, retries - 1).then(resolve), 500);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                img.src = url;
+            });
+        }
+
+        function drawText(x, y, text) {
+            ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.lineWidth = 3;
+            ctx.lineJoin = "round";
+            ctx.strokeStyle = "black";
+            ctx.strokeText(text, x, y);
+            ctx.fillStyle = "white";
+            ctx.fillText(text, x, y);
+        }
+
+        function parseAlbums(data) {
+            if (data.error) throw new Error(data.message || "Last.fm API error");
+            return (data.topalbums?.album || []).map((a) => {
+                let imageUrl = "";
+                for (const img of a.image || []) {
+                    if (img.size === "extralarge" && img["#text"]) { imageUrl = img["#text"]; break; }
+                }
+                if (!imageUrl) {
+                    for (const img of [...(a.image || [])].reverse()) {
+                        if (img["#text"]) { imageUrl = img["#text"]; break; }
+                    }
+                }
+                return { artist: a.artist?.name || "Unknown", album: a.name || "Unknown", image_url: imageUrl, playcount: a.playcount || "0" };
+            });
+        }
+
+        async function generate(user, period, dim, opts) {
+            const slots = dim * dim;
+            const limit = opts.skipNocover ? slots * 3 : slots;
+            const params = new URLSearchParams({ method: "user.getTopAlbums", user, period, limit });
+            const resp = await fetch(`/api/lastfm?${params}`);
+            const data = await resp.json();
+
+            let albums = parseAlbums(data);
+            if (opts.skipNocover) albums = albums.filter((a) => a.image_url);
+            albums = albums.slice(0, slots);
+
+            const images = await Promise.all(albums.map((a) => loadImage(a.image_url)));
+
+            canvas.width = dim * TILE_SIZE;
+            canvas.height = dim * TILE_SIZE;
+            ctx.fillStyle = "#1e1e1e";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < slots && i < albums.length; i++) {
+                const row = Math.floor(i / dim);
+                const col = i % dim;
+                const x = col * TILE_SIZE;
+                const y = row * TILE_SIZE;
+
+                if (images[i]) ctx.drawImage(images[i], x, y, TILE_SIZE, TILE_SIZE);
+
+                let textY = y + 16;
+                if (!opts.hideCaptions) {
+                    drawText(x + 5, textY, albums[i].artist); textY += 16;
+                    drawText(x + 5, textY, albums[i].album); textY += 16;
+                }
+                if (opts.showPlaycount) drawText(x + 5, textY, `${albums[i].playcount} plays`);
+            }
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const user = document.getElementById("user").value.trim();
+            if (!user) return;
+
+            const period = document.getElementById("period").value;
+            const dim = parseInt(document.getElementById("size").value);
+
+            loading.style.display = "flex";
+            result.style.display = "none";
+            error.style.display = "none";
+            submitBtn.disabled = true;
+
+            const opts = {
+                hideCaptions: document.getElementById("hide-captions").checked,
+                showPlaycount: document.getElementById("show-playcount").checked,
+                skipNocover: document.getElementById("skip-nocover").checked,
+            };
+
+            try {
+                await generate(user, period, dim, opts);
+                const dataUrl = canvas.toDataURL("image/png");
+                collageImg.src = dataUrl;
+                canvas.toBlob((blob) => {
+                    downloadLink.href = URL.createObjectURL(blob);
+                    downloadLink.download = `${user}_${period}_${dim}x${dim}.png`;
+                }, "image/png");
+                result.style.display = "flex";
+                loading.style.display = "none";
+                submitBtn.disabled = false;
+            } catch (err) {
+                loading.style.display = "none";
+                error.textContent = err.message || "Failed to generate collage.";
+                error.style.display = "block";
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
