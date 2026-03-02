@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Generate a collage of your top albums from Last.fm">
+    <meta property="og:title" content="scrobblage">
+    <meta property="og:description" content="Generate a collage of your top albums from Last.fm">
+    <meta property="og:type" content="website">
     <title>scrobblage</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/style.css">
@@ -136,11 +140,16 @@
             const limit = opts.skipNocover ? slots * 3 : slots;
             const params = new URLSearchParams({ method: "user.getTopAlbums", user, period, limit });
             const resp = await fetch(`/api/lastfm?${params}`);
+            if (!resp.ok) {
+                const body = await resp.json().catch(() => null);
+                throw new Error(body?.message || `Last.fm request failed (${resp.status})`);
+            }
             const data = await resp.json();
 
             let albums = parseAlbums(data);
             if (opts.skipNocover) albums = albums.filter((a) => a.image_url);
             albums = albums.slice(0, slots);
+            if (albums.length === 0) throw new Error("No albums found for this user and time period.");
 
             const images = await Promise.all(albums.map((a) => loadImage(a.image_url)));
 
@@ -166,10 +175,13 @@
             }
         }
 
+        let isGenerating = false;
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
+            if (isGenerating) return;
             const user = document.getElementById("user").value.trim();
             if (!user) return;
+            isGenerating = true;
 
             const period = document.getElementById("period").value;
             const dim = parseInt(document.getElementById("size").value);
@@ -187,20 +199,24 @@
 
             try {
                 await generate(user, period, dim, opts);
-                const dataUrl = canvas.toDataURL("image/png");
-                collageImg.src = dataUrl;
+                if (downloadLink.href) URL.revokeObjectURL(downloadLink.href);
+                const baseName = `${user}_${period}_${dim}x${dim}`;
                 canvas.toBlob((blob) => {
-                    downloadLink.href = URL.createObjectURL(blob);
-                    downloadLink.download = `${user}_${period}_${dim}x${dim}.png`;
-                }, "image/png");
+                    const url = URL.createObjectURL(blob);
+                    collageImg.src = url;
+                    downloadLink.href = url;
+                    downloadLink.download = `${baseName}.jpg`;
+                }, "image/jpeg", 0.92);
                 result.style.display = "flex";
                 loading.style.display = "none";
                 submitBtn.disabled = false;
+                isGenerating = false;
             } catch (err) {
                 loading.style.display = "none";
                 error.textContent = err.message || "Failed to generate collage.";
                 error.style.display = "block";
                 submitBtn.disabled = false;
+                isGenerating = false;
             }
         });
     </script>
