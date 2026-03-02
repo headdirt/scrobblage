@@ -188,6 +188,7 @@ button[type="submit"]:disabled {
     max-width: 100%;
     height: auto;
     border-radius: 4px;
+    user-select: none;
 }
 
 .download-btn {
