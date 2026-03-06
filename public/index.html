@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -110,27 +111,17 @@
         }
 
         function drawText(x, y, text) {
-            ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-            ctx.lineWidth = 3;
-            ctx.lineJoin = "round";
-            ctx.strokeStyle = "black";
             ctx.strokeText(text, x, y);
-            ctx.fillStyle = "white";
             ctx.fillText(text, x, y);
         }
 
         function parseAlbums(data) {
             if (data.error) throw new Error(data.message || "Last.fm API error");
             return (data.topalbums?.album || []).map((a) => {
-                let imageUrl = "";
-                for (const img of a.image || []) {
-                    if (img.size === "extralarge" && img["#text"]) { imageUrl = img["#text"]; break; }
-                }
-                if (!imageUrl) {
-                    for (const img of [...(a.image || [])].reverse()) {
-                        if (img["#text"]) { imageUrl = img["#text"]; break; }
-                    }
-                }
+                const imgs = a.image || [];
+                const imageUrl = imgs.find((i) => i.size === "extralarge" && i["#text"])?.["#text"]
+                    || imgs.findLast((i) => i["#text"])?.["#text"]
+                    || "";
                 return { artist: a.artist?.name || "Unknown", album: a.name || "Unknown", image_url: imageUrl, playcount: a.playcount || "0" };
             });
         }
@@ -157,6 +148,11 @@
             canvas.height = dim * TILE_SIZE;
             ctx.fillStyle = "#1e1e1e";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.lineWidth = 3;
+            ctx.lineJoin = "round";
+            ctx.strokeStyle = "black";
+            ctx.fillStyle = "white";
 
             for (let i = 0; i < slots && i < albums.length; i++) {
                 const row = Math.floor(i / dim);
@@ -199,22 +195,20 @@
 
             try {
                 await generate(user, period, dim, opts);
-                if (downloadLink.href) URL.revokeObjectURL(downloadLink.href);
                 const baseName = `${user}_${period}_${dim}x${dim}`;
                 canvas.toBlob((blob) => {
+                    if (downloadLink.href.startsWith("blob:")) URL.revokeObjectURL(downloadLink.href);
                     const url = URL.createObjectURL(blob);
                     collageImg.src = url;
                     downloadLink.href = url;
                     downloadLink.download = `${baseName}.jpg`;
+                    result.style.display = "flex";
                 }, "image/jpeg", 0.92);
-                result.style.display = "flex";
-                loading.style.display = "none";
-                submitBtn.disabled = false;
-                isGenerating = false;
             } catch (err) {
-                loading.style.display = "none";
                 error.textContent = err.message || "Failed to generate collage.";
                 error.style.display = "block";
+            } finally {
+                loading.style.display = "none";
                 submitBtn.disabled = false;
                 isGenerating = false;
             }
