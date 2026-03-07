@@ -171,31 +171,55 @@
             }
         }
 
+        function getFormState() {
+            return {
+                user: document.getElementById("user").value.trim(),
+                period: document.getElementById("period").value,
+                size: document.getElementById("size").value,
+                hideCaptions: document.getElementById("hide-captions").checked,
+                showPlaycount: document.getElementById("show-playcount").checked,
+                skipNocover: document.getElementById("skip-nocover").checked,
+            };
+        }
+
+        function updateURL(state) {
+            const params = new URLSearchParams({ user: state.user, period: state.period, size: state.size });
+            if (state.hideCaptions) params.set("captions", "false");
+            if (state.showPlaycount) params.set("playcount", "true");
+            if (state.skipNocover) params.set("nocover", "true");
+            history.replaceState(null, "", "?" + params.toString());
+        }
+
+        function loadFromURL() {
+            const params = new URLSearchParams(location.search);
+            if (params.has("user")) document.getElementById("user").value = params.get("user");
+            if (params.has("period")) document.getElementById("period").value = params.get("period");
+            if (params.has("size")) document.getElementById("size").value = params.get("size");
+            if (params.get("captions") === "false") document.getElementById("hide-captions").checked = true;
+            if (params.get("playcount") === "true") document.getElementById("show-playcount").checked = true;
+            if (params.get("nocover") === "true") document.getElementById("skip-nocover").checked = true;
+            const user = params.get("user");
+            return user != null && user.trim() !== "";
+        }
+
         let isGenerating = false;
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
+        async function submitForm() {
             if (isGenerating) return;
-            const user = document.getElementById("user").value.trim();
-            if (!user) return;
+            const state = getFormState();
+            if (!state.user) return;
             isGenerating = true;
 
-            const period = document.getElementById("period").value;
-            const dim = parseInt(document.getElementById("size").value);
+            const dim = parseInt(state.size);
 
             loading.style.display = "flex";
             result.style.display = "none";
             error.style.display = "none";
             submitBtn.disabled = true;
 
-            const opts = {
-                hideCaptions: document.getElementById("hide-captions").checked,
-                showPlaycount: document.getElementById("show-playcount").checked,
-                skipNocover: document.getElementById("skip-nocover").checked,
-            };
-
             try {
-                await generate(user, period, dim, opts);
-                const baseName = `${user}_${period}_${dim}x${dim}`;
+                await generate(state.user, state.period, dim, state);
+                updateURL(state);
+                const baseName = `${state.user}_${state.period}_${dim}x${dim}`;
                 canvas.toBlob((blob) => {
                     if (downloadLink.href.startsWith("blob:")) URL.revokeObjectURL(downloadLink.href);
                     const url = URL.createObjectURL(blob);
@@ -212,7 +236,11 @@
                 submitBtn.disabled = false;
                 isGenerating = false;
             }
-        });
+        }
+
+        form.addEventListener("submit", (e) => { e.preventDefault(); submitForm(); });
+
+        if (loadFromURL()) submitForm();
     </script>
 </body>
 </html>
