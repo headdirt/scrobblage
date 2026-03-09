@@ -198,8 +198,6 @@
             if (params.get("captions") === "false") document.getElementById("hide-captions").checked = true;
             if (params.get("playcount") === "true") document.getElementById("show-playcount").checked = true;
             if (params.get("nocover") === "true") document.getElementById("skip-nocover").checked = true;
-            const user = params.get("user");
-            return user != null && user.trim() !== "";
         }
 
         let isGenerating = false;
@@ -240,7 +238,7 @@
 
         form.addEventListener("submit", (e) => { e.preventDefault(); submitForm(); });
 
-        if (loadFromURL()) submitForm();
+        loadFromURL();
     </script>
 </body>
 </html>
