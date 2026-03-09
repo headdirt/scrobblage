@@ -69,7 +69,7 @@
 
         <div id="loading" style="display:none;">
             <div class="spinner"></div>
-            <span>Generating collage...</span>
+            <span id="loading-text">Generating collage...</span>
         </div>
 
         <div id="error" style="display:none;"></div>
@@ -77,7 +77,10 @@
         <div id="result" style="display:none;">
             <canvas id="collage-canvas" style="display:none;"></canvas>
             <img id="collage-img">
-            <a id="download-link" class="download-btn">Download Image</a>
+            <div class="result-actions">
+                <a id="download-link" class="download-btn">Download Image</a>
+                <button id="copy-btn" class="download-btn" type="button">Copy to Clipboard</button>
+            </div>
         </div>
     </div>
 
@@ -92,6 +95,8 @@
         const error = document.getElementById("error");
         const downloadLink = document.getElementById("download-link");
         const submitBtn = document.getElementById("submit-btn");
+        const loadingText = document.getElementById("loading-text");
+        const copyBtn = document.getElementById("copy-btn");
 
         function loadImage(url, retries = 2) {
             return new Promise((resolve) => {
@@ -108,6 +113,12 @@
                 };
                 img.src = url;
             });
+        }
+
+        function canvasToBlob(type = "image/png", quality) {
+            return new Promise((resolve, reject) =>
+                canvas.toBlob((b) => b ? resolve(b) : reject(new Error("Failed to render image.")), type, quality)
+            );
         }
 
         function drawText(x, y, text) {
@@ -130,6 +141,7 @@
             const slots = dim * dim;
             const limit = opts.skipNocover ? slots * 3 : slots;
             const params = new URLSearchParams({ method: "user.getTopAlbums", user, period, limit });
+            loadingText.textContent = "Fetching album data...";
             const resp = await fetch(`/api/lastfm?${params}`);
             if (!resp.ok) {
                 const body = await resp.json().catch(() => null);
@@ -142,7 +154,14 @@
             albums = albums.slice(0, slots);
             if (albums.length === 0) throw new Error("No albums found for this user and time period.");
 
-            const images = await Promise.all(albums.map((a) => loadImage(a.image_url)));
+            let loaded = 0;
+            loadingText.textContent = `Loading images (0/${albums.length})...`;
+            const images = await Promise.all(albums.map((a) =>
+                loadImage(a.image_url).then(img => {
+                    loadingText.textContent = `Loading images (${++loaded}/${albums.length})...`;
+                    return img;
+                })
+            ));
 
             canvas.width = dim * TILE_SIZE;
             canvas.height = dim * TILE_SIZE;
@@ -218,14 +237,13 @@
                 await generate(state.user, state.period, dim, state);
                 updateURL(state);
                 const baseName = `${state.user}_${state.period}_${dim}x${dim}`;
-                canvas.toBlob((blob) => {
-                    if (downloadLink.href.startsWith("blob:")) URL.revokeObjectURL(downloadLink.href);
-                    const url = URL.createObjectURL(blob);
-                    collageImg.src = url;
-                    downloadLink.href = url;
-                    downloadLink.download = `${baseName}.jpg`;
-                    result.style.display = "flex";
-                }, "image/jpeg", 0.92);
+                const blob = await canvasToBlob("image/jpeg", 0.92);
+                if (downloadLink.href.startsWith("blob:")) URL.revokeObjectURL(downloadLink.href);
+                const url = URL.createObjectURL(blob);
+                collageImg.src = url;
+                downloadLink.href = url;
+                downloadLink.download = `${baseName}.jpg`;
+                result.style.display = "flex";
             } catch (err) {
                 error.textContent = err.message || "Failed to generate collage.";
                 error.style.display = "block";
@@ -237,6 +255,20 @@
         }
 
         form.addEventListener("submit", (e) => { e.preventDefault(); submitForm(); });
+
+        copyBtn.addEventListener("click", async () => {
+            const label = copyBtn.textContent;
+            copyBtn.disabled = true;
+            try {
+                const blob = await canvasToBlob();
+                await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+                copyBtn.textContent = "Copied!";
+            } catch {
+                copyBtn.textContent = "Copy failed";
+            } finally {
+                setTimeout(() => { copyBtn.textContent = label; copyBtn.disabled = false; }, 2000);
+            }
+        });
 
         loadFromURL();
     </script>
