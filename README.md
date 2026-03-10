@@ -6,15 +6,18 @@ Generate a collage of your top albums from [Last.fm](https://www.last.fm/).
 
 - Grid sizes from 3x3 to 10x10
 - Time periods from last 7 days to all-time
-- Optional play count display
-- Option to hide artist/album captions
-- Option to skip albums without cover art
+- Show or hide play counts and artist/album captions
+- Skip albums without cover art
+- Download or copy the result to clipboard
+- Shareable permalink URLs
+
+## How it works
+
+A [Cloudflare Worker](https://developers.cloudflare.com/workers/) proxies requests to the Last.fm API. The frontend fetches album art and composites it onto an HTML canvas.
 
 ## Setup
 
-Runs as a [Cloudflare Worker](https://developers.cloudflare.com/workers/) with static assets.
-
-1. Clone the repo and install dependencies:
+1. Install dependencies:
 
 ```
 npm install
@@ -43,10 +46,6 @@ npm run dev
 ```
 npm run deploy
 ```
-
-## How it works
-
-The frontend sends requests to `/api/lastfm`, which proxies to the Last.fm API (appending the API key server-side). Album art is fetched and composited onto an HTML canvas, then exported as a PNG.
 
 ## License
 
