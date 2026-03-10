@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Generate a collage of your top albums from Last.fm">
+    <meta name="theme-color" content="#1a1a1a">
     <meta property="og:title" content="scrobblage">
     <meta property="og:description" content="Generate a collage of your top albums from Last.fm">
     <meta property="og:type" content="website">
@@ -217,6 +218,7 @@
             if (params.get("captions") === "false") document.getElementById("hide-captions").checked = true;
             if (params.get("playcount") === "true") document.getElementById("show-playcount").checked = true;
             if (params.get("nocover") === "true") document.getElementById("skip-nocover").checked = true;
+            if (params.has("auto")) submitForm();
         }
 
         let isGenerating = false;
