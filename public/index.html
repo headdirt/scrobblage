@@ -260,8 +260,7 @@
             const label = copyBtn.textContent;
             copyBtn.disabled = true;
             try {
-                const blob = await canvasToBlob();
-                await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+                await navigator.clipboard.write([new ClipboardItem({ "image/png": canvasToBlob() })]);
                 copyBtn.textContent = "Copied!";
             } catch {
                 copyBtn.textContent = "Copy failed";
