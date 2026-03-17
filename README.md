@@ -1,4 +1,4 @@
-# scrobblage
+# <img src="public/favicon.svg" width="32" height="32" alt=""> scrobblage
 
 Generate a collage of your top albums from [Last.fm](https://www.last.fm/).
 
@@ -9,7 +9,23 @@ Generate a collage of your top albums from [Last.fm](https://www.last.fm/).
 - Show or hide play counts and artist/album captions
 - Skip albums without cover art
 - Download or copy the result to clipboard
-- Shareable permalink URLs
+- Bookmarkable permalink URLs
+
+## URL Parameters
+
+All settings can be controlled via query parameters, making your preferred collage bookmarkable.
+
+| Parameter | Description | Values |
+|-----------|-------------|--------|
+| `user` | Last.fm username | |
+| `period` | Time range | `7day` (default), `1month`, `3month`, `6month`, `12month`, `overall` |
+| `size` | Grid size | `3`, `4`, `5` (default), `7`, `10` |
+| `captions` | Show artist/album names | `false` to hide (shown by default) |
+| `playcount` | Show play counts | `true` to show (hidden by default) |
+| `nocover` | Skip albums without art | `true` to skip |
+| `auto` | Generate on page load | present (any value) |
+
+Example: `?user=rj&period=7day&size=5&auto`
 
 ## How it works
 
