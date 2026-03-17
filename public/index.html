@@ -203,7 +203,9 @@
         }
 
         function updateURL(state) {
-            const params = new URLSearchParams({ user: state.user, period: state.period, size: state.size });
+            const params = new URLSearchParams({ user: state.user });
+            if (state.period !== "7day") params.set("period", state.period);
+            if (state.size !== "5") params.set("size", state.size);
             if (state.hideCaptions) params.set("captions", "false");
             if (state.showPlaycount) params.set("playcount", "true");
             if (state.skipNocover) params.set("nocover", "true");
