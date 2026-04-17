@@ -127,32 +127,18 @@
             ctx.fillText(text, x, y);
         }
 
-        function parseAlbums(data) {
-            if (data.error) throw new Error(data.message || "Last.fm API error");
-            return (data.topalbums?.album || []).map((a) => {
-                const imgs = a.image || [];
-                const imageUrl = imgs.find((i) => i.size === "extralarge" && i["#text"])?.["#text"]
-                    || imgs.findLast((i) => i["#text"])?.["#text"]
-                    || "";
-                return { artist: a.artist?.name || "Unknown", album: a.name || "Unknown", image_url: imageUrl, playcount: a.playcount || "0" };
-            });
-        }
-
         async function generate(user, period, dim, opts) {
             const slots = dim * dim;
-            const limit = opts.skipNocover ? slots * 3 : slots;
-            const params = new URLSearchParams({ method: "user.getTopAlbums", user, period, limit });
+            const params = new URLSearchParams({ user, period, size: String(dim) });
+            if (opts.skipNocover) params.set("nocover", "true");
             loadingText.textContent = "Fetching album data...";
-            const resp = await fetch(`/api/lastfm?${params}`);
+            const resp = await fetch(`/api/collage-data?${params}`);
+            const data = await resp.json().catch(() => null);
             if (!resp.ok) {
-                const body = await resp.json().catch(() => null);
-                throw new Error(body?.message || `Last.fm request failed (${resp.status})`);
+                throw new Error(data?.message || `Last.fm request failed (${resp.status})`);
             }
-            const data = await resp.json();
 
-            let albums = parseAlbums(data);
-            if (opts.skipNocover) albums = albums.filter((a) => a.image_url);
-            albums = albums.slice(0, slots);
+            const albums = data?.albums || [];
             if (albums.length === 0) throw new Error("No albums found for this user and time period.");
 
             let loaded = 0;

@@ -29,7 +29,7 @@ Example: `?user=rj&period=7day&size=5&auto`
 
 ## How it works
 
-A [Cloudflare Worker](https://developers.cloudflare.com/workers/) proxies requests to the Last.fm API. The frontend fetches album art and composites it onto an HTML canvas.
+A [Cloudflare Worker](https://developers.cloudflare.com/workers/) fetches and normalizes top album data from the Last.fm API. The frontend fetches album art and composites it onto an HTML canvas.
 
 ## Setup
 
