@@ -22,7 +22,7 @@ function jsonResponse(body, init = {}) {
   });
 }
 
-function validateCollageParams(searchParams) {
+export function validateCollageParams(searchParams) {
   const user = (searchParams.get("user") || "").trim();
   const period = searchParams.get("period") || "7day";
   const size = searchParams.get("size") || "5";
@@ -38,8 +38,8 @@ function validateCollageParams(searchParams) {
   return { user, period, skipNocover, slots };
 }
 
-function parseAlbums(data) {
-  return (data.topalbums?.album || []).map((album) => {
+export function parseAlbums(data) {
+  return (data?.topalbums?.album || []).map((album) => {
     const images = album.image || [];
     const imageUrl =
       images.find((image) => image.size === "extralarge" && image["#text"])?.["#text"] ||
@@ -77,16 +77,29 @@ export default {
       if (params.error) {
         return jsonResponse({ message: params.error }, { status: 400 });
       }
+      if (!env.LASTFM_API_KEY) {
+        return jsonResponse(
+          { message: "Last.fm API key is not configured." },
+          { status: 500 }
+        );
+      }
 
       const limit = params.skipNocover ? params.slots * 3 : params.slots;
       try {
         const resp = await fetchTopAlbums(env, { ...params, limit });
-        const data = await resp.json();
+        const data = await resp.json().catch(() => null);
 
         if (!resp.ok) {
           return jsonResponse(
-            { message: data.message || `Last.fm request failed (${resp.status})` },
+            { message: data?.message || `Last.fm request failed (${resp.status})` },
             { status: resp.status }
+          );
+        }
+
+        if (!data) {
+          return jsonResponse(
+            { message: "Last.fm returned an invalid response." },
+            { status: 502 }
           );
         }
 

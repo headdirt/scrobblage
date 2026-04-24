@@ -63,6 +63,20 @@ npm run dev
 npm run deploy
 ```
 
+## Development
+
+Run the test suite:
+
+```
+npm test
+```
+
+Regenerate the inlined HTML version:
+
+```
+npm run build:standalone
+```
+
 ## License
 
 [AGPL-3.0-or-later](LICENSE)

@@ -98,6 +98,10 @@
         const submitBtn = document.getElementById("submit-btn");
         const loadingText = document.getElementById("loading-text");
         const copyBtn = document.getElementById("copy-btn");
+        const periodSelect = document.getElementById("period");
+        const sizeSelect = document.getElementById("size");
+        const ALLOWED_PERIODS = new Set(Array.from(periodSelect.options, (o) => o.value));
+        const ALLOWED_SIZES = new Set(Array.from(sizeSelect.options, (o) => o.value));
 
         function loadImage(url, retries = 2) {
             return new Promise((resolve) => {
@@ -201,12 +205,18 @@
         function loadFromURL() {
             const params = new URLSearchParams(location.search);
             if (params.has("user")) document.getElementById("user").value = params.get("user");
-            if (params.has("period")) document.getElementById("period").value = params.get("period");
-            if (params.has("size")) document.getElementById("size").value = params.get("size");
+            const period = params.get("period");
+            if (ALLOWED_PERIODS.has(period)) periodSelect.value = period;
+            const size = params.get("size");
+            if (ALLOWED_SIZES.has(size)) sizeSelect.value = size;
             if (params.get("captions") === "false") document.getElementById("hide-captions").checked = true;
             if (params.get("playcount") === "true") document.getElementById("show-playcount").checked = true;
             if (params.get("nocover") === "true") document.getElementById("skip-nocover").checked = true;
             if (params.has("auto")) submitForm();
+        }
+
+        function canCopyImage() {
+            return window.isSecureContext && navigator.clipboard?.write && window.ClipboardItem;
         }
 
         let isGenerating = false;
@@ -260,6 +270,10 @@
         });
 
         loadFromURL();
+        if (!canCopyImage()) {
+            copyBtn.disabled = true;
+            copyBtn.title = "Image clipboard copy is not available in this browser or context.";
+        }
     </script>
 </body>
 </html>
