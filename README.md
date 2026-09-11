@@ -10,7 +10,7 @@ Generate a collage of your top albums from [Last.fm](https://www.last.fm/).
 - Skip albums without cover art
 - Replace broken covers, with a notice when there are not enough usable albums
 - Cancel generation; slow requests and images time out automatically
-- Keep long captions inside their tiles, with an optional caption background
+- Shorten long captions with an ellipsis inside their tiles, with an optional background fitted to each line
 - Download or copy the result to clipboard
 - Bookmarkable permalink URLs
 
@@ -93,6 +93,8 @@ npm run build:standalone
 ```
 
 The generated HTML includes the styles and scripts, but still needs to be served from the same origin as the Worker API; it is not an offline app.
+
+The hosted app loads JavaScript from `public/app.js` and applies security headers from `public/_headers`. Its content-security policy blocks inline scripts and embedding in other sites while allowing HTTPS album covers and generated images. The standalone export inlines its script, so a host serving that export must explicitly allow that script (for example, with a matching CSP hash).
 
 ## License
 

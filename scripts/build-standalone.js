@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { readFile, writeFile } from "node:fs/promises";
 
-const [indexHtml, styleCss, faviconSvg] = await Promise.all([
+const [indexHtml, styleCss, faviconSvg, appJs] = await Promise.all([
   readFile("public/index.html", "utf8"),
   readFile("public/style.css", "utf8"),
   readFile("public/favicon.svg", "utf8"),
+  readFile("public/app.js", "utf8"),
 ]);
 
 const faviconDataUrl = `data:image/svg+xml,${encodeURIComponent(faviconSvg)}`;
 const html = indexHtml
+  .replace('<script src="/app.js"></script>', () => `<script>\n${appJs}\n</script>`)
   .replace(
     '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
     `<link rel="icon" href="${faviconDataUrl}" type="image/svg+xml">`

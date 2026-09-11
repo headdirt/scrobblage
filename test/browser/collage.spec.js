@@ -141,7 +141,7 @@ test("long captions are shortened and cannot paint into neighboring tiles", asyn
     return {
       shortened: fitText(label, 288), width: ctx.measureText(fitText(label, 288)).width,
       untouched: Array.from(neighbor).every((v, i) => v === (i % 4 === 0 || i % 4 === 3 ? 255 : 0)),
-      shaded: ctx.getImageData(290, 35, 1, 1).data[0] < 255,
+      shaded: ctx.getImageData(3, 21, 1, 1).data[0] < 255,
     };
   });
   expect(result.shortened).toMatch(/…$/);
@@ -155,4 +155,51 @@ test("empty results show a useful error", async ({ page }) => {
   await page.goto(autoURL);
   await expect(page.locator("#error")).toContainText("No albums found");
   await expect(page.locator("#submit-btn")).toBeEnabled();
+});
+
+test("caption backgrounds fit each line and leave unused cover art clear", async ({ page }) => {
+  await page.goto("/");
+  const pixels = await page.evaluate(() => {
+    const canvas = document.getElementById("collage-canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = canvas.height = 300;
+    ctx.fillStyle = "red"; ctx.fillRect(0, 0, 300, 300);
+    ctx.font = "bold 14px sans-serif";
+    drawTile({ artist: "A", album: "A much longer album name", playcount: "42" }, null, 0, 0, { captionBackground: true, showPlaycount: true });
+    return [[30, 5], [30, 21], [290, 5], [290, 21], [290, 37], [3, 5]].map(([x, y]) => ctx.getImageData(x, y, 1, 1).data[0]);
+  });
+  expect(pixels[0]).toBe(255); // Beyond the short artist name.
+  expect(pixels[1]).toBeLessThan(255); // Within the longer album's background.
+  expect(pixels.slice(2, 5)).toEqual([255, 255, 255]);
+  expect(pixels[5]).toBeLessThan(255);
+});
+
+test("hosted CSP permits the app but blocks inline scripts", async ({ page, request }) => {
+  const response = await page.goto("/");
+  expect(response.headers()["content-security-policy"]).toContain("script-src 'self'");
+  expect(response.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+  await page.evaluate(() => {
+    const script = document.createElement("script");
+    script.textContent = "window.unexpectedScriptRan = true";
+    document.body.append(script);
+  });
+  expect(await page.evaluate(() => window.unexpectedScriptRan)).toBeUndefined();
+  const apiResponse = await request.get("/api/collage-data");
+  expect(apiResponse.headers()["x-content-type-options"]).toBe("nosniff");
+  await mockAlbums(page);
+  await mockCovers(page);
+  await page.locator("#lastfm-profile").fill("rj");
+  await page.locator("#size").selectOption("3");
+  await page.locator("#submit-btn").click();
+  await expect(page.locator("#result")).toBeVisible();
+});
+
+test("loading progress stays concise", async ({ page }) => {
+  await mockAlbums(page);
+  await page.route("**/covers/**", () => {});
+  await page.goto(autoURL);
+  await expect(page.locator("#loading-text")).toHaveText("Loading covers (0/9)...");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
 });

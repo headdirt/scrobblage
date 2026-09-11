@@ -2,6 +2,10 @@
 const JSON_CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
 };
 
 const ALLOWED_PERIODS = new Set([
