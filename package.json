@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test",
-    "build:standalone": "node scripts/build-standalone.js"
+    "test": "node --test test/*.test.js",
+    "build:standalone": "node scripts/build-standalone.js",
+    "test:browser": "playwright test",
+    "test:all": "npm test && npm run test:browser"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "wrangler": "^4"
   }
 }

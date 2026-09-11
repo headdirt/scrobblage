@@ -14,6 +14,8 @@ const ALLOWED_PERIODS = new Set([
 ]);
 const ALLOWED_SIZES = new Set(["3", "4", "5", "7", "10"]);
 const MAX_USER_LENGTH = 64;
+const MAX_PAGES = 5;
+const REQUEST_TIMEOUT_MS = 15000;
 
 function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body), {
@@ -28,44 +30,52 @@ export function validateCollageParams(searchParams) {
   const size = searchParams.get("size") || "5";
   const nocover = searchParams.get("nocover");
   const skipNocover = nocover === "true" || nocover === "1";
+  const page = searchParams.get("page") || "1";
 
   if (!user) return { error: "Last.fm username is required." };
   if (user.length > MAX_USER_LENGTH) return { error: "Last.fm username is too long." };
   if (!ALLOWED_PERIODS.has(period)) return { error: "Invalid time period." };
   if (!ALLOWED_SIZES.has(size)) return { error: "Invalid grid size." };
+  if (!/^[1-9]\d*$/.test(page) || Number(page) > MAX_PAGES || (!skipNocover && page !== "1")) {
+    return { error: "Invalid album page." };
+  }
 
   const slots = Number(size) ** 2;
-  return { user, period, skipNocover, slots };
+  return { user, period, skipNocover, slots, page: Number(page) };
 }
 
 export function parseAlbums(data) {
-  return (data?.topalbums?.album || []).map((album) => {
-    const images = album.image || [];
+  const albums = data?.topalbums?.album;
+  if (!Array.isArray(albums)) return [];
+  return albums.filter((album) => album && typeof album === "object" && !Array.isArray(album)).map((album) => {
+    const images = (Array.isArray(album.image) ? album.image : [])
+      .filter((image) => typeof image?.["#text"] === "string" && image["#text"].trim());
     const imageUrl =
       images.find((image) => image.size === "extralarge" && image["#text"])?.["#text"] ||
       images.findLast((image) => image["#text"])?.["#text"] ||
       "";
 
     return {
-      artist: album.artist?.name || "Unknown",
-      album: album.name || "Unknown",
+      artist: (typeof album.artist?.name === "string" && album.artist.name) || "Unknown",
+      album: (typeof album.name === "string" && album.name) || "Unknown",
       image_url: imageUrl,
-      playcount: album.playcount || "0",
+      playcount: /^(0|[1-9]\d*)$/.test(String(album.playcount)) ? String(album.playcount) : "0",
     };
   });
 }
 
-async function fetchTopAlbums(env, { user, period, limit }) {
+async function fetchTopAlbums(env, { user, period, limit, page }, signal) {
   const params = new URLSearchParams({
     method: "user.getTopAlbums",
     user,
     period,
     limit,
+    page,
     api_key: env.LASTFM_API_KEY,
     format: "json",
   });
 
-  return fetch(`https://ws.audioscrobbler.com/2.0/?${params}`);
+  return fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, { signal });
 }
 
 export default {
@@ -84,10 +94,14 @@ export default {
         );
       }
 
-      const limit = params.skipNocover ? params.slots * 3 : params.slots;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
-        const resp = await fetchTopAlbums(env, { ...params, limit });
-        const data = await resp.json().catch(() => null);
+        const resp = await fetchTopAlbums(env, { ...params, limit: params.slots }, controller.signal);
+        const data = await resp.json().catch((err) => {
+          if (controller.signal.aborted) throw err;
+          return null;
+        });
 
         if (!resp.ok) {
           return jsonResponse(
@@ -110,17 +124,33 @@ export default {
           );
         }
 
+        if (!Array.isArray(data.topalbums?.album)) {
+          return jsonResponse({ message: "Last.fm returned invalid album data." }, { status: 502 });
+        }
+
         let albums = parseAlbums(data);
         if (params.skipNocover) {
           albums = albums.filter((album) => album.image_url);
         }
 
-        return jsonResponse({ albums: albums.slice(0, params.slots) });
-      } catch (err) {
+        const totalPages = Number(data.topalbums["@attr"]?.totalPages);
+        const hasMore = Number.isInteger(totalPages) && totalPages >= 0
+          ? params.page < totalPages
+          : data.topalbums.album.length >= params.slots;
+        const nextPage = params.skipNocover && hasMore && params.page < MAX_PAGES
+          ? params.page + 1 : null;
+        return jsonResponse({
+          albums: albums.slice(0, params.slots),
+          nextPage,
+          searchLimitReached: params.skipNocover && hasMore && params.page === MAX_PAGES,
+        });
+      } catch {
         return jsonResponse(
-          { message: err.message || "Failed to reach Last.fm" },
-          { status: 502 }
+          { message: controller.signal.aborted ? "Last.fm took too long to respond. Please try again." : "Failed to reach Last.fm. Please try again." },
+          { status: controller.signal.aborted ? 504 : 502 }
         );
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
