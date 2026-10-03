@@ -140,8 +140,9 @@ test("long captions are shortened and cannot paint into neighboring tiles", asyn
     const neighbor = ctx.getImageData(300, 0, 300, 60).data;
     return {
       shortened: fitText(label, 288), width: ctx.measureText(fitText(label, 288)).width,
-      untouched: Array.from(neighbor).every((v, i) => v === (i % 4 === 0 || i % 4 === 3 ? 255 : 0)),
-      shaded: ctx.getImageData(3, 21, 1, 1).data[0] < 255,
+      // Allow small deviations: privacy-focused browsers add noise to canvas readback.
+      untouched: Array.from(neighbor).every((v, i) => Math.abs(v - (i % 4 === 0 || i % 4 === 3 ? 255 : 0)) <= 4),
+      shaded: ctx.getImageData(3, 21, 1, 1).data[0] < 240,
     };
   });
   expect(result.shortened).toMatch(/…$/);
@@ -168,10 +169,11 @@ test("caption backgrounds fit each line and leave unused cover art clear", async
     drawTile({ artist: "A", album: "A much longer album name", playcount: "42" }, null, 0, 0, { captionBackground: true, showPlaycount: true });
     return [[30, 5], [30, 21], [290, 5], [290, 21], [290, 37], [3, 5]].map(([x, y]) => ctx.getImageData(x, y, 1, 1).data[0]);
   });
-  expect(pixels[0]).toBe(255); // Beyond the short artist name.
-  expect(pixels[1]).toBeLessThan(255); // Within the longer album's background.
-  expect(pixels.slice(2, 5)).toEqual([255, 255, 255]);
-  expect(pixels[5]).toBeLessThan(255);
+  // Thresholds tolerate the canvas readback noise some privacy-focused browsers add.
+  expect(pixels[0]).toBeGreaterThan(250); // Beyond the short artist name.
+  expect(pixels[1]).toBeLessThan(240); // Within the longer album's background.
+  for (const pixel of pixels.slice(2, 5)) expect(pixel).toBeGreaterThan(250);
+  expect(pixels[5]).toBeLessThan(240);
 });
 
 test("hosted CSP permits the app but blocks inline scripts", async ({ page, request }) => {
