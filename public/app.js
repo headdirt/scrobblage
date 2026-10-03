@@ -67,7 +67,7 @@ async function fetchAlbumPage(params, signal) {
     ), REQUEST_TIMEOUT_MS);
     try {
         const resp = await fetch(`/api/collage-data?${params}`, { signal: controller.signal });
-        const data = await resp.json();
+        const data = await resp.json().catch(() => null);
         if (!resp.ok) throw new Error(data?.message || `Album request failed (${resp.status})`);
         if (!Array.isArray(data?.albums)) throw new Error("Received invalid album data.");
         return data;
@@ -179,7 +179,7 @@ async function generate(user, period, dim, opts, signal) {
 function getFormState() {
     return {
         source: sourceSelect.value,
-        user: document.getElementById("lastfm-profile").value.trim(),
+        user: document.getElementById("profile").value.trim(),
         period: document.getElementById("period").value,
         size: document.getElementById("size").value,
         hideCaptions: document.getElementById("hide-captions").checked,
@@ -206,7 +206,7 @@ function loadFromURL() {
     const source = params.get("source");
     if (ALLOWED_SOURCES.has(source)) sourceSelect.value = source;
     updateSourceLabels();
-    if (params.has("user")) document.getElementById("lastfm-profile").value = params.get("user");
+    if (params.has("user")) document.getElementById("profile").value = params.get("user");
     const period = params.get("period");
     if (ALLOWED_PERIODS.has(period)) periodSelect.value = period;
     const size = params.get("size");

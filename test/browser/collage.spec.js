@@ -190,7 +190,7 @@ test("hosted CSP permits the app but blocks inline scripts", async ({ page, requ
   expect(apiResponse.headers()["x-content-type-options"]).toBe("nosniff");
   await mockAlbums(page);
   await mockCovers(page);
-  await page.locator("#lastfm-profile").fill("rj");
+  await page.locator("#profile").fill("rj");
   await page.locator("#size").selectOption("3");
   await page.locator("#submit-btn").click();
   await expect(page.locator("#result")).toBeVisible();
@@ -228,4 +228,10 @@ test("empty ListenBrainz stats explain the update delay", async ({ page }) => {
   await mockAlbums(page, []);
   await page.goto(autoURL + "&source=listenbrainz");
   await expect(page.locator("#error")).toContainText("ListenBrainz statistics are updated periodically");
+});
+
+test("non-JSON API errors show the HTTP status", async ({ page }) => {
+  await page.route("**/api/collage-data?**", route => route.fulfill({ status: 502, contentType: "text/html", body: "<html>Bad gateway</html>" }));
+  await page.goto(autoURL);
+  await expect(page.locator("#error")).toHaveText("Album request failed (502)");
 });

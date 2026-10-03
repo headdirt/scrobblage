@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import worker, { parseAlbums, parseListenBrainzAlbums, validateCollageParams } from "../src/index.js";
+import worker, { parseLastfmAlbums, parseListenBrainzAlbums, validateCollageParams } from "../src/index.js";
 
 function params(query) {
   return new URLSearchParams(query);
@@ -28,8 +28,8 @@ test("validateCollageParams rejects invalid values", () => {
   assert.equal(validateCollageParams(params("source=listenbrainz")).error, "ListenBrainz username is required.");
 });
 
-test("parseAlbums normalizes Last.fm album data", () => {
-  const albums = parseAlbums({
+test("parseLastfmAlbums normalizes Last.fm album data", () => {
+  const albums = parseLastfmAlbums({
     topalbums: {
       album: [
         {
@@ -55,9 +55,9 @@ test("parseAlbums normalizes Last.fm album data", () => {
   ]);
 });
 
-test("parseAlbums tolerates empty or malformed responses", () => {
-  assert.deepEqual(parseAlbums(null), []);
-  assert.deepEqual(parseAlbums({}), []);
+test("parseLastfmAlbums tolerates empty or malformed responses", () => {
+  assert.deepEqual(parseLastfmAlbums(null), []);
+  assert.deepEqual(parseLastfmAlbums({}), []);
 });
 
 test("collage endpoint reports missing Last.fm API key clearly", async () => {
@@ -96,12 +96,12 @@ test("collage endpoint handles malformed Last.fm JSON", async () => {
   }
 });
 
-test("parseAlbums skips malformed entries and normalizes malformed fields", () => {
-  for (const album of [null, {}, "wrong"]) assert.deepEqual(parseAlbums({ topalbums: { album } }), []);
-  assert.deepEqual(parseAlbums({ topalbums: { album: [null, [], 3, {
+test("parseLastfmAlbums skips malformed entries and normalizes malformed fields", () => {
+  for (const album of [null, {}, "wrong"]) assert.deepEqual(parseLastfmAlbums({ topalbums: { album } }), []);
+  assert.deepEqual(parseLastfmAlbums({ topalbums: { album: [null, [], 3, {
     name: {}, artist: null, image: [null, {}, { "#text": 123 }], playcount: {},
   }] } }), [{ artist: "Unknown", album: "Unknown", image_url: "", playcount: "0" }]);
-  assert.equal(parseAlbums({ topalbums: { album: [{ image: {} }] } })[0].image_url, "");
+  assert.equal(parseLastfmAlbums({ topalbums: { album: [{ image: {} }] } })[0].image_url, "");
 });
 
 test("pagination is bounded and only enabled for cover replacement", () => {
@@ -233,6 +233,7 @@ test("ListenBrainz requests map period and page to range and offset without an A
   assert.equal(url.searchParams.get("range"), "quarter");
   assert.equal(url.searchParams.get("count"), "9");
   assert.equal(url.searchParams.get("offset"), "9");
+  assert.match(globalThis.fetch.mock.calls[0].arguments[1].headers["User-Agent"], /^scrobblage /);
 });
 
 test("ListenBrainz stops paging at the total release group count", async t => {

@@ -20,6 +20,7 @@ const ALLOWED_SIZES = new Set(["3", "4", "5", "7", "10"]);
 const MAX_USER_LENGTH = 64;
 const MAX_PAGES = 5;
 const REQUEST_TIMEOUT_MS = 15000;
+const UPSTREAM_HEADERS = { "User-Agent": "scrobblage (+https://github.com/headdirt/scrobblage)" };
 
 function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body), {
@@ -31,7 +32,7 @@ function jsonResponse(body, init = {}) {
 const SOURCES = {
   lastfm: {
     name: "Last.fm",
-    fetch: fetchTopAlbums,
+    fetch: fetchLastfmTopAlbums,
     read: readLastfmAlbums,
   },
   listenbrainz: {
@@ -74,7 +75,7 @@ export function validateCollageParams(searchParams) {
   return { source, user, period, skipNocover, slots, page: Number(page) };
 }
 
-export function parseAlbums(data) {
+export function parseLastfmAlbums(data) {
   const albums = data?.topalbums?.album;
   if (!Array.isArray(albums)) return [];
   return albums.filter(isObject).map((album) => {
@@ -119,7 +120,7 @@ function normalizePlaycount(value) {
   return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : "0";
 }
 
-async function fetchTopAlbums(env, { user, period, slots, page }, signal) {
+async function fetchLastfmTopAlbums(env, { user, period, slots, page }, signal) {
   const params = new URLSearchParams({
     method: "user.getTopAlbums",
     user,
@@ -130,7 +131,7 @@ async function fetchTopAlbums(env, { user, period, slots, page }, signal) {
     format: "json",
   });
 
-  return fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, { signal });
+  return fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, { headers: UPSTREAM_HEADERS, signal });
 }
 
 async function fetchListenBrainzReleaseGroups(env, { user, period, slots, page }, signal) {
@@ -142,7 +143,7 @@ async function fetchListenBrainzReleaseGroups(env, { user, period, slots, page }
 
   return fetch(
     `https://api.listenbrainz.org/1/stats/user/${encodeURIComponent(user)}/release-groups?${params}`,
-    { signal }
+    { headers: UPSTREAM_HEADERS, signal }
   );
 }
 
@@ -152,7 +153,7 @@ function readLastfmAlbums(data, params) {
 
   const totalPages = Number(data.topalbums["@attr"]?.totalPages);
   return {
-    albums: parseAlbums(data),
+    albums: parseLastfmAlbums(data),
     hasMore: Number.isInteger(totalPages) && totalPages >= 0
       ? params.page < totalPages
       : data.topalbums.album.length >= params.slots,
