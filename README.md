@@ -1,9 +1,10 @@
 # <img src="public/favicon.svg" width="32" height="32" alt=""> scrobblage
 
-Generate a collage of your top albums from [Last.fm](https://www.last.fm/).
+Generate a collage of your top albums from [Last.fm](https://www.last.fm/) or [ListenBrainz](https://listenbrainz.org/).
 
 ## Features
 
+- Last.fm or ListenBrainz as the data source
 - Grid sizes from 3x3 to 10x10
 - Time periods from last 7 days to all-time
 - Show or hide play counts and artist/album captions
@@ -20,7 +21,8 @@ All settings can be controlled via query parameters, making your preferred colla
 
 | Parameter | Description | Values |
 |-----------|-------------|--------|
-| `user` | Last.fm username | |
+| `source` | Listening data source | `lastfm` (default), `listenbrainz` |
+| `user` | Last.fm or ListenBrainz username | |
 | `period` | Time range | `7day` (default), `1month`, `3month`, `6month`, `12month`, `overall` |
 | `size` | Grid size | `3`, `4`, `5` (default), `7`, `10` |
 | `captions` | Show artist/album names | `false` to hide (shown by default) |
@@ -31,9 +33,11 @@ All settings can be controlled via query parameters, making your preferred colla
 
 Example: `?user=rj&period=7day&size=5&auto`
 
+ListenBrainz statistics use calendar ranges, so `period` maps to the previous full week, month, quarter, half year or year (`overall` is all time). ListenBrainz recalculates statistics periodically, so very recent listens may not appear yet.
+
 ## How it works
 
-A [Cloudflare Worker](https://developers.cloudflare.com/workers/) fetches and normalizes top album data from the Last.fm API. The frontend fetches album art and composites it onto an HTML canvas.
+A [Cloudflare Worker](https://developers.cloudflare.com/workers/) fetches and normalizes top album data from the Last.fm API or the ListenBrainz statistics API (which needs no key). ListenBrainz covers come from the [Cover Art Archive](https://coverartarchive.org/). The frontend fetches album art and composites it onto an HTML canvas.
 
 When skipping missing covers, the frontend checks albums in ranking order and requests another page when covers fail to load. It searches at most five pages (five times the grid's tile count, up to 500 albums). If there are still not enough usable covers, the remaining tiles stay blank and a notice explains the shortfall. Image loads have an eight-second deadline, including one retry; a whole generation is limited to one minute.
 
@@ -84,7 +88,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser tests start a local Worker on port 8787 and use simulated Last.fm responses and cover images, so no API key is needed. They cover asset routing, generation, downloads, URL settings, broken and stalled covers, cancellation, and caption rendering. Run both suites with `npm run test:all`.
+The browser tests start a local Worker on port 8787 and use simulated album data and cover images, so no API key is needed. They cover asset routing, generation, downloads, URL settings, broken and stalled covers, cancellation, and caption rendering. Run both suites with `npm run test:all`.
 
 Regenerate the inlined HTML version:
 

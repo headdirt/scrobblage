@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import worker, { parseAlbums, validateCollageParams } from "../src/index.js";
+import worker, { parseAlbums, parseListenBrainzAlbums, validateCollageParams } from "../src/index.js";
 
 function params(query) {
   return new URLSearchParams(query);
@@ -10,6 +10,7 @@ function params(query) {
 
 test("validateCollageParams applies defaults", () => {
   assert.deepEqual(validateCollageParams(params("user=rj")), {
+    source: "lastfm",
     user: "rj",
     period: "7day",
     skipNocover: false,
@@ -22,6 +23,9 @@ test("validateCollageParams rejects invalid values", () => {
   assert.equal(validateCollageParams(params("")).error, "Last.fm username is required.");
   assert.equal(validateCollageParams(params("user=rj&period=year")).error, "Invalid time period.");
   assert.equal(validateCollageParams(params("user=rj&size=6")).error, "Invalid grid size.");
+  assert.equal(validateCollageParams(params("user=rj&source=spotify")).error, "Invalid source.");
+  assert.equal(validateCollageParams(params("user=rj&source=toString")).error, "Invalid source.");
+  assert.equal(validateCollageParams(params("source=listenbrainz")).error, "ListenBrainz username is required.");
 });
 
 test("parseAlbums normalizes Last.fm album data", () => {
@@ -178,4 +182,80 @@ test("Last.fm timeout aborts the upstream request", async t => {
 test("unmatched routes delegate to the assets binding", async () => {
   const response = await worker.fetch(new Request("https://example.com/missing"), env);
   assert.equal(response.status, 404);
+});
+
+const release = (name, extra = {}) => ({
+  artist_name: "Artist",
+  release_group_name: name,
+  listen_count: 7,
+  caa_id: 123,
+  caa_release_mbid: "dda07cd4-efaa-400a-8151-08c29729604a",
+  ...extra,
+});
+const listenBrainzPayload = (groups, total = groups.length) => ({
+  payload: { release_groups: groups, total_release_group_count: total },
+});
+
+test("parseListenBrainzAlbums normalizes release groups and builds Cover Art Archive URLs", () => {
+  assert.deepEqual(parseListenBrainzAlbums(listenBrainzPayload([
+    release("The North Borders"),
+    release("No Art", { caa_id: null, caa_release_mbid: null }),
+    release("Bad Art", { caa_id: "1/../2", caa_release_mbid: "../evil" }),
+    null,
+    { release_group_name: {}, artist_name: 3, listen_count: "x" },
+  ])), [
+    {
+      artist: "Artist",
+      album: "The North Borders",
+      image_url: "https://coverartarchive.org/release/dda07cd4-efaa-400a-8151-08c29729604a/123-500.jpg",
+      playcount: "7",
+    },
+    { artist: "Artist", album: "No Art", image_url: "", playcount: "7" },
+    { artist: "Artist", album: "Bad Art", image_url: "", playcount: "7" },
+    { artist: "Unknown", album: "Unknown", image_url: "", playcount: "0" },
+  ]);
+  assert.deepEqual(parseListenBrainzAlbums(null), []);
+  assert.deepEqual(parseListenBrainzAlbums({ payload: {} }), []);
+});
+
+test("ListenBrainz requests map period and page to range and offset without an API key", async t => {
+  t.mock.method(globalThis, "fetch", async () => Response.json(listenBrainzPayload([release("First"), release("Missing", { caa_id: null })], 40)));
+  const response = await worker.fetch(
+    new Request("https://example.com/api/collage-data?source=listenbrainz&user=a%2Fb&size=3&period=3month&nocover=true&page=2"),
+    { ASSETS: env.ASSETS }
+  );
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.albums.length, 1);
+  assert.equal(body.nextPage, 3);
+  const url = new URL(globalThis.fetch.mock.calls[0].arguments[0]);
+  assert.equal(url.origin + url.pathname, "https://api.listenbrainz.org/1/stats/user/a%2Fb/release-groups");
+  assert.equal(url.searchParams.get("range"), "quarter");
+  assert.equal(url.searchParams.get("count"), "9");
+  assert.equal(url.searchParams.get("offset"), "9");
+});
+
+test("ListenBrainz stops paging at the total release group count", async t => {
+  const { body } = await endpoint(t, listenBrainzPayload([release("Last")], 18), "source=listenbrainz&user=rj&size=3&nocover=true&page=2");
+  assert.equal(body.nextPage, null);
+  assert.equal(body.searchLimitReached, false);
+});
+
+test("ListenBrainz uncalculated stats are an empty success", async t => {
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 204 }));
+  const response = await worker.fetch(new Request("https://example.com/api/collage-data?source=listenbrainz&user=rj"), env);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).albums, []);
+});
+
+test("ListenBrainz errors are surfaced with their status", async t => {
+  const { response, body } = await endpoint(t, { code: 404, error: "Cannot find user: rj" }, "source=listenbrainz&user=rj", 404);
+  assert.equal(response.status, 404);
+  assert.equal(body.message, "Cannot find user: rj");
+});
+
+test("ListenBrainz invalid payloads return a useful upstream error", async t => {
+  const { response, body } = await endpoint(t, { payload: {} }, "source=listenbrainz&user=rj");
+  assert.equal(response.status, 502);
+  assert.equal(body.message, "ListenBrainz returned invalid album data.");
 });

@@ -18,8 +18,11 @@ const downloadLink = document.getElementById("download-link");
 const submitBtn = document.getElementById("submit-btn");
 const loadingText = document.getElementById("loading-text");
 const copyBtn = document.getElementById("copy-btn");
+const sourceSelect = document.getElementById("source");
+const profileLabel = document.getElementById("profile-label");
 const periodSelect = document.getElementById("period");
 const sizeSelect = document.getElementById("size");
+const ALLOWED_SOURCES = new Set(Array.from(sourceSelect.options, (o) => o.value));
 const ALLOWED_PERIODS = new Set(Array.from(periodSelect.options, (o) => o.value));
 const ALLOWED_SIZES = new Set(Array.from(sizeSelect.options, (o) => o.value));
 
@@ -65,8 +68,8 @@ async function fetchAlbumPage(params, signal) {
     try {
         const resp = await fetch(`/api/collage-data?${params}`, { signal: controller.signal });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data?.message || `Last.fm request failed (${resp.status})`);
-        if (!Array.isArray(data?.albums)) throw new Error("Last.fm returned invalid album data.");
+        if (!resp.ok) throw new Error(data?.message || `Album request failed (${resp.status})`);
+        if (!Array.isArray(data?.albums)) throw new Error("Received invalid album data.");
         return data;
     } catch (err) {
         if (controller.signal.aborted) throw controller.signal.reason;
@@ -114,7 +117,7 @@ function drawTile(album, image, x, y, opts) {
 
 async function generate(user, period, dim, opts, signal) {
     const slots = dim * dim;
-    const params = new URLSearchParams({ user, period, size: String(dim) });
+    const params = new URLSearchParams({ source: opts.source, user, period, size: String(dim) });
     if (opts.skipNocover) params.set("nocover", "true");
     const selected = [];
     const seen = new Set();
@@ -149,7 +152,9 @@ async function generate(user, period, dim, opts, signal) {
     signal.throwIfAborted();
     if (!selected.length) throw new Error(opts.skipNocover
         ? "No usable covers found. Try a longer time period or turn off skipping albums without covers."
-        : "No albums found for this user and time period.");
+        : "No albums found for this user and time period." + (opts.source === "listenbrainz"
+            ? " ListenBrainz statistics are updated periodically, so recent listens may not appear yet."
+            : ""));
 
     canvas.width = dim * TILE_SIZE;
     canvas.height = dim * TILE_SIZE;
@@ -173,6 +178,7 @@ async function generate(user, period, dim, opts, signal) {
 
 function getFormState() {
     return {
+        source: sourceSelect.value,
         user: document.getElementById("lastfm-profile").value.trim(),
         period: document.getElementById("period").value,
         size: document.getElementById("size").value,
@@ -185,6 +191,7 @@ function getFormState() {
 
 function updateURL(state) {
     const params = new URLSearchParams({ user: state.user });
+    if (state.source !== "lastfm") params.set("source", state.source);
     if (state.period !== "7day") params.set("period", state.period);
     if (state.size !== "5") params.set("size", state.size);
     if (state.hideCaptions) params.set("captions", "false");
@@ -196,6 +203,9 @@ function updateURL(state) {
 
 function loadFromURL() {
     const params = new URLSearchParams(location.search);
+    const source = params.get("source");
+    if (ALLOWED_SOURCES.has(source)) sourceSelect.value = source;
+    updateSourceLabels();
     if (params.has("user")) document.getElementById("lastfm-profile").value = params.get("user");
     const period = params.get("period");
     if (ALLOWED_PERIODS.has(period)) periodSelect.value = period;
@@ -206,6 +216,15 @@ function loadFromURL() {
     if (params.get("nocover") === "true") document.getElementById("skip-nocover").checked = true;
     if (params.get("background") === "true") document.getElementById("caption-background").checked = true;
     if (params.has("auto")) submitForm();
+}
+
+function updateSourceLabels() {
+    const source = sourceSelect.selectedOptions[0];
+    profileLabel.textContent = `${source.textContent} Profile`;
+    for (const option of periodSelect.options) {
+        option.dataset.lastfm ??= option.textContent;
+        option.textContent = option.dataset[source.value];
+    }
 }
 
 function canCopyImage() {
@@ -234,7 +253,8 @@ async function submitForm() {
 
     try {
         await generate(state.user, state.period, dim, state, signal);
-        const baseName = `${state.user}_${state.period}_${dim}x${dim}`;
+        const sourcePrefix = state.source === "lastfm" ? "" : `${state.source}_`;
+        const baseName = `${sourcePrefix}${state.user}_${state.period}_${dim}x${dim}`;
         const blob = await canvasToBlob("image/jpeg", 0.92);
         signal.throwIfAborted();
         updateURL(state);
@@ -258,6 +278,8 @@ async function submitForm() {
 }
 
 cancelBtn.addEventListener("click", () => activeController?.abort(new Error("Generation cancelled.")));
+
+sourceSelect.addEventListener("change", updateSourceLabels);
 
 form.addEventListener("submit", (e) => { e.preventDefault(); submitForm(); });
 

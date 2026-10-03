@@ -203,3 +203,29 @@ test("loading progress stays concise", async ({ page }) => {
   await expect(page.locator("#loading-text")).toHaveText("Loading covers (0/9)...");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
 });
+
+test("ListenBrainz source is sent to the API, relabels the form, and persists in the URL", async ({ page }) => {
+  await mockCovers(page);
+  let apiURL;
+  await page.route("**/api/collage-data?**", route => {
+    apiURL = new URL(route.request().url());
+    return route.fulfill({ json: { albums: albums(9), nextPage: null } });
+  });
+  await page.goto(autoURL + "&source=listenbrainz&period=3month");
+  await expect(page.locator("#result")).toBeVisible();
+  expect(apiURL.searchParams.get("source")).toBe("listenbrainz");
+  await expect(page.locator("#source")).toHaveValue("listenbrainz");
+  await expect(page.locator("#profile-label")).toHaveText("ListenBrainz Profile");
+  await expect(page.locator("#period option:checked")).toHaveText("Last Quarter");
+  expect(new URL(page.url()).searchParams.get("source")).toBe("listenbrainz");
+  expect(await page.locator("#download-link").getAttribute("download")).toBe("listenbrainz_rj_3month_3x3.jpg");
+  await page.locator("#source").selectOption("lastfm");
+  await expect(page.locator("#profile-label")).toHaveText("Last.fm Profile");
+  await expect(page.locator("#period option:checked")).toHaveText("Last 3 Months");
+});
+
+test("empty ListenBrainz stats explain the update delay", async ({ page }) => {
+  await mockAlbums(page, []);
+  await page.goto(autoURL + "&source=listenbrainz");
+  await expect(page.locator("#error")).toContainText("ListenBrainz statistics are updated periodically");
+});
