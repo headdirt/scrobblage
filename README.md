@@ -88,7 +88,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The browser tests start a local Worker on port 8787 and use simulated album data and cover images, so no API key is needed. They cover asset routing, generation, downloads, URL settings, broken and stalled covers, cancellation, and caption rendering. Run both suites with `npm run test:all`.
+The browser tests start a local Worker on port 8787 and use simulated album data and cover images, so no API key is needed. They cover asset routing, generation, downloads, URL settings, broken and stalled covers, cancellation, and caption rendering. Run both suites with `npm run test:all`. To use an installed Chromium-based browser instead of downloading Playwright's, set `PW_EXECUTABLE_PATH`, for example `PW_EXECUTABLE_PATH=/Applications/Helium.app/Contents/MacOS/Helium npm run test:browser`.
 
 Regenerate the inlined HTML version:
 
