@@ -37,7 +37,7 @@ ListenBrainz statistics use calendar ranges, so `period` maps to the previous fu
 
 ## How it works
 
-A [Cloudflare Worker](https://developers.cloudflare.com/workers/) fetches and normalizes top album data from the Last.fm API or the ListenBrainz statistics API (which needs no key). ListenBrainz covers come from the [Cover Art Archive](https://coverartarchive.org/). The frontend fetches album art and composites it onto an HTML canvas.
+A [Cloudflare Worker](https://developers.cloudflare.com/workers/) fetches and normalizes top album data from the Last.fm API or the ListenBrainz statistics API (which needs no key). ListenBrainz covers come from the [Cover Art Archive](https://coverartarchive.org/). Successful album responses are cached at the edge for 5 minutes (Last.fm) or an hour (ListenBrainz, whose statistics update periodically). The frontend fetches album art and composites it onto an HTML canvas.
 
 When skipping missing covers, the frontend checks albums in ranking order and requests another page when covers fail to load. It searches at most five pages (five times the grid's tile count, up to 500 albums). If there are still not enough usable covers, the remaining tiles stay blank and a notice explains the shortfall. Image loads have an eight-second deadline, including one retry; a whole generation is limited to one minute.
 

@@ -260,3 +260,38 @@ test("ListenBrainz invalid payloads return a useful upstream error", async t => 
   assert.equal(response.status, 502);
   assert.equal(body.message, "ListenBrainz returned invalid album data.");
 });
+
+function fakeCache(t) {
+  const store = new Map();
+  globalThis.caches = {
+    default: {
+      match: async request => store.get(request.url)?.clone(),
+      put: async (request, response) => { store.set(request.url, response); },
+    },
+  };
+  t.after(() => { delete globalThis.caches; });
+  return store;
+}
+
+test("successful responses are cached by normalized parameters", async t => {
+  const store = fakeCache(t);
+  t.mock.method(globalThis, "fetch", async () => Response.json(listenBrainzPayload([release("First")])));
+  const waits = [];
+  const ctx = { waitUntil: promise => waits.push(promise) };
+  const first = await worker.fetch(new Request("https://example.com/api/collage-data?source=listenbrainz&user=rj&size=3&extra=1"), env, ctx);
+  assert.equal(first.headers.get("Cache-Control"), "public, max-age=3600");
+  await Promise.all(waits);
+  assert.equal(store.size, 1);
+  const second = await worker.fetch(new Request("https://example.com/api/collage-data?user=rj&source=listenbrainz&size=3&period=7day"), env, ctx);
+  assert.equal(globalThis.fetch.mock.callCount(), 1);
+  assert.equal((await second.json()).albums[0].album, "First");
+});
+
+test("error responses are not cached", async t => {
+  const store = fakeCache(t);
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: "Busy" }, { status: 503 }));
+  const response = await worker.fetch(new Request("https://example.com/api/collage-data?source=listenbrainz&user=rj"), env);
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("Cache-Control"), null);
+  assert.equal(store.size, 0);
+});

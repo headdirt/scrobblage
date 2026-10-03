@@ -32,11 +32,14 @@ function jsonResponse(body, init = {}) {
 const SOURCES = {
   lastfm: {
     name: "Last.fm",
+    cacheSeconds: 300,
     fetch: fetchLastfmTopAlbums,
     read: readLastfmAlbums,
   },
   listenbrainz: {
     name: "ListenBrainz",
+    // Statistics are recalculated periodically, so they can be cached for longer.
+    cacheSeconds: 3600,
     fetch: fetchListenBrainzReleaseGroups,
     read: readListenBrainzAlbums,
   },
@@ -173,8 +176,70 @@ function readListenBrainzAlbums(data, params) {
   };
 }
 
+async function fetchCollageData(env, params) {
+  const source = SOURCES[params.source];
+  const cacheHeaders = { "Cache-Control": `public, max-age=${source.cacheSeconds}` };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await source.fetch(env, params, controller.signal);
+    // ListenBrainz answers 204 when a user's stats have not been calculated yet.
+    if (resp.status === 204) {
+      return jsonResponse({ albums: [], nextPage: null, searchLimitReached: false }, { headers: cacheHeaders });
+    }
+    const data = await resp.json().catch((err) => {
+      if (controller.signal.aborted) throw err;
+      return null;
+    });
+
+    if (!resp.ok) {
+      return jsonResponse(
+        { message: data?.message || data?.error || `${source.name} request failed (${resp.status})` },
+        { status: resp.status }
+      );
+    }
+
+    if (!data) {
+      return jsonResponse(
+        { message: `${source.name} returned an invalid response.` },
+        { status: 502 }
+      );
+    }
+
+    const parsed = source.read(data, params);
+    if (parsed.error) {
+      return jsonResponse({ message: parsed.error }, { status: 502 });
+    }
+
+    let { albums } = parsed;
+    if (params.skipNocover) {
+      albums = albums.filter((album) => album.image_url);
+    }
+
+    const nextPage = params.skipNocover && parsed.hasMore && params.page < MAX_PAGES
+      ? params.page + 1 : null;
+    return jsonResponse({
+      albums: albums.slice(0, params.slots),
+      nextPage,
+      searchLimitReached: params.skipNocover && parsed.hasMore && params.page === MAX_PAGES,
+    }, { headers: cacheHeaders });
+  } catch {
+    return jsonResponse(
+      { message: controller.signal.aborted ? `${source.name} took too long to respond. Please try again.` : `Failed to reach ${source.name}. Please try again.` },
+      { status: controller.signal.aborted ? 504 : 502 }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function collageCacheKey(url, { source, user, period, slots, skipNocover, page }) {
+  const params = new URLSearchParams({ source, user, period, slots, nocover: skipNocover, page });
+  return new Request(`${url.origin}/api/collage-data?${params}`);
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/collage-data") {
@@ -182,7 +247,6 @@ export default {
       if (params.error) {
         return jsonResponse({ message: params.error }, { status: 400 });
       }
-      const source = SOURCES[params.source];
       if (params.source === "lastfm" && !env.LASTFM_API_KEY) {
         return jsonResponse(
           { message: "Last.fm API key is not configured." },
@@ -190,58 +254,18 @@ export default {
         );
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      try {
-        const resp = await source.fetch(env, params, controller.signal);
-        // ListenBrainz answers 204 when a user's stats have not been calculated yet.
-        if (resp.status === 204) {
-          return jsonResponse({ albums: [], nextPage: null, searchLimitReached: false });
-        }
-        const data = await resp.json().catch((err) => {
-          if (controller.signal.aborted) throw err;
-          return null;
-        });
+      // The Cache API exists only on Workers, and only stores responses on custom domains.
+      const cache = globalThis.caches?.default;
+      const cacheKey = collageCacheKey(url, params);
+      const cached = cache && await cache.match(cacheKey);
+      if (cached) return cached;
 
-        if (!resp.ok) {
-          return jsonResponse(
-            { message: data?.message || data?.error || `${source.name} request failed (${resp.status})` },
-            { status: resp.status }
-          );
-        }
-
-        if (!data) {
-          return jsonResponse(
-            { message: `${source.name} returned an invalid response.` },
-            { status: 502 }
-          );
-        }
-
-        const parsed = source.read(data, params);
-        if (parsed.error) {
-          return jsonResponse({ message: parsed.error }, { status: 502 });
-        }
-
-        let { albums } = parsed;
-        if (params.skipNocover) {
-          albums = albums.filter((album) => album.image_url);
-        }
-
-        const nextPage = params.skipNocover && parsed.hasMore && params.page < MAX_PAGES
-          ? params.page + 1 : null;
-        return jsonResponse({
-          albums: albums.slice(0, params.slots),
-          nextPage,
-          searchLimitReached: params.skipNocover && parsed.hasMore && params.page === MAX_PAGES,
-        });
-      } catch {
-        return jsonResponse(
-          { message: controller.signal.aborted ? `${source.name} took too long to respond. Please try again.` : `Failed to reach ${source.name}. Please try again.` },
-          { status: controller.signal.aborted ? 504 : 502 }
-        );
-      } finally {
-        clearTimeout(timeout);
+      const response = await fetchCollageData(env, params);
+      if (cache && response.status === 200) {
+        const put = cache.put(cacheKey, response.clone());
+        if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
       }
+      return response;
     }
 
     return env.ASSETS.fetch(request);
