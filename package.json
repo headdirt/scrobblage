@@ -11,7 +11,7 @@
     "test:all": "npm test && npm run test:browser"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "wrangler": "^4"
+    "@playwright/test": "^1.64.1",
+    "wrangler": "^4.151.3"
   }
 }
